@@ -1,0 +1,12 @@
+# put <键> <值> / del <键> / get / prefix / longest / keys / stats
+put a 5
+put apples 6
+put apple 2
+put app 3
+put banana 1
+put banana 9
+longest applesauce
+prefix app
+del apple
+keys
+stats
