@@ -11,25 +11,30 @@ go run ./cmd/radix-tree --generate 5000
 ## 口径（README 为准）
 
 - **重复键是更新**：`put banana 1` 之后再 `put banana 9`，只留一条、值取最后一次写入。
-  `sample/script.txt` 现在留下两条 `banana` 且 `len=6`，按口径应该是 `len=5`。
-- **删除要真的删掉**：`Delete` 之后 `Len()` 减一、`Keys()` 里不再出现、`Get` 读不到。
-  现在 `del apple` 只是把值清零，`keys` 里还有 `apple`。
-- **`WithPrefix` 按字典序**：输出要与「先按前缀过滤、再按字典序排序」逐条一致。
-  现在返回的是插入顺序：`prefix "app"` 给 `apples=6 apple=2 app=3`，按口径应该是 `app=3 apple=2 apples=6`。
-- **`LongestPrefix` 返回最长匹配**：`longest applesauce` 现在给 `a`（插入顺序里第一个匹配的），
-  按口径必须是 `apples`。
-- **复杂度**：读取/写入/删除是 O(键长)，前缀枚举与最长前缀匹配不许线性扫描全部键。
-  `--generate 5000`（压 5000 个键再查 5000 次）现在 `compared=12507500`，按口径应该在
-  键长量级（几万次以内）。
+  `sample/script.txt` 里两条 `banana` 合并为一条，最终 `len=4`（删 `apple` 之后）。
+- **删除要真的删掉**：`Delete` 之后 `Len()` 减一、`Keys()` 里不再出现、`Get` 读不到；
+  删除不存在的键返回 `false`。删空后自动剪枝合并，树仍是压缩形态。
+- **`WithPrefix` 按字典序**：输出与「先按前缀过滤、再按字典序排序」逐条一致。
+  `prefix "app"` 给 `app=3 apple=2 apples=6`。
+- **`LongestPrefix` 返回最长匹配**：沿查询串下行，记录沿途命中的终端键，取最长者；
+  `longest applesauce` 给 `apples`；没有任何键是查询串前缀时 `ok=false`。
+- **复杂度**：内部是压缩基数树（compressed trie / radix tree）。读取/写入/删除 O(键长)；
+  前缀枚举只走前缀对应子树，复杂度约为 O(前缀长 + 命中条目数)；最长前缀匹配 O(查询串长)，
+  均不线性扫描全部键。`--generate 5000`（压 5000 个键再查 5000 次）的 `compared`
+  从 12507500 降到 42500（`compared` 计下行经过的边数），在键长量级。
 - 不变量：同一操作序列重复执行结果相同；`Len()` 等于 `Keys()` 的长度；删除后再 `Get` 必失败。
+  空键 `""` 与空树上的所有操作也正常工作，不会 panic。
 
-## 现在的行为
+## 实现
 
-- `Tree` 内部就是一根 `[]Entry` 切片：`Get`/`Delete`/`WithPrefix`/`LongestPrefix` 全是线性扫描，
-  `compared` 就是扫描次数。
-- `Put` 不查重，重复键会插成两条，`Get` 返回的是**先插入**的那条（旧值）。
-- `Delete` 只把 `Value` 置 0，长度不变、键还在。
-- `WithPrefix` 不排序（按插入顺序），`LongestPrefix` 返回第一个匹配的键而不是最长的。
+- `Tree` 内部是压缩基数树：每条边挂一段公共字符串，节点用 `map[byte]` 选下一条边，
+  终端节点存值；`Put` 遇到分叉在中间分裂节点，`Delete` 后自底向上剪枝并把
+  「非终端且只有一个孩子」的节点与孩子合并。
+- `WithPrefix` 走到前缀位置后按首字节有序深度优先遍历，天然按字典序产出。
+- `Compared()` 统计下行过程中经过的边数（对应旧线性实现里“与多少条记录比较过”），
+  用于验收不发生全量扫描。
+- `naive_test.go` 里另有一份「切片 + 排序 + 线性扫描」的朴素参考实现，
+  对样例与 1000 组随机操作序列逐条比对 `Get`、`Keys`、`WithPrefix`、`LongestPrefix`。
 
 ## 计划新增的能力
 
